@@ -1,6 +1,6 @@
 from flask import Flask, request
-import asyncio
 import os
+import asyncio
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
@@ -20,21 +20,22 @@ async def forward_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+# создаём application
 application = ApplicationBuilder().token(TOKEN).build()
 application.add_handler(MessageHandler(filters.ALL, forward_message))
+
+# инициализация приложения
+asyncio.run(application.initialize())  # ВАЖНО!
 
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     update = request.get_json()
-
     if update:
-        asyncio.run(
-            application.process_update(
-                Update.de_json(update, application.bot)
-            )
+        # используем create_task вместо asyncio.run
+        asyncio.create_task(
+            application.process_update(Update.de_json(update, application.bot))
         )
-
     return "ok"
 
 
