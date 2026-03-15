@@ -1,26 +1,14 @@
+from flask import Flask, request
+import asyncio
 import os
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
+app = Flask(__name__)
+
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_CHAT_ID = -5239091049
-
-
-# маленький сервер чтобы Render видел порт
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is running")
-
-
-def run_web():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), Handler)
-    server.serve_forever()
 
 
 async def forward_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -32,14 +20,24 @@ async def forward_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-def run_bot():
-    app = ApplicationBuilder().token(TOKEN).build()
-
-    handler = MessageHandler(filters.ALL, forward_message)
-    app.add_handler(handler)
-
-    app.run_polling()
+application = ApplicationBuilder().token(TOKEN).build()
+application.add_handler(MessageHandler(filters.ALL, forward_message))
 
 
-threading.Thread(target=run_web).start()
-run_bot()
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    update = request.get_json()
+
+    if update:
+        asyncio.run(
+            application.process_update(
+                Update.de_json(update, application.bot)
+            )
+        )
+
+    return "ok"
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
