@@ -1,6 +1,6 @@
-from flask import Flask, request
+from flask import Flask
 import os
-import asyncio
+import threading
 
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
@@ -8,9 +8,9 @@ from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTyp
 app = Flask(__name__)
 
 TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_CHAT_ID = -5239091049
+ADMIN_CHAT_ID = -5239091049  # ID модераторской группы
 
-
+# Асинхронная функция пересылки сообщений
 async def forward_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message:
         await context.bot.forward_message(
@@ -19,26 +19,32 @@ async def forward_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message_id=update.message.message_id
         )
 
-
-# создаём application
+# Создаем приложение Telegram
 application = ApplicationBuilder().token(TOKEN).build()
 application.add_handler(MessageHandler(filters.ALL, forward_message))
 
-# инициализация приложения
-asyncio.run(application.initialize())  # ВАЖНО!
+# Мини-сервер для Render, чтобы видеть порт и держать сервис alive
+class Handler:
+    def __init__(self, port):
+        self.port = port
 
+    def run(self):
+        from http.server import HTTPServer, BaseHTTPRequestHandler
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    update = request.get_json()
-    if update:
-        # используем create_task вместо asyncio.run
-        asyncio.create_task(
-            application.process_update(Update.de_json(update, application.bot))
-        )
-    return "ok"
+        class SimpleHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"Bot is running")
 
+        server = HTTPServer(("0.0.0.0", self.port), SimpleHandler)
+        server.serve_forever()
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+# Функция запуска polling
+def run_bot():
+    application.run_polling()
+
+# Запуск мини-сервера и бота параллельно
+port = int(os.environ.get("PORT", 10000))
+threading.Thread(target=Handler(port).run).start()
+run_bot()
